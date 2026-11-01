@@ -28,6 +28,10 @@ public partial class GameManager : Node2D
 	private static readonly Color SnakeHeadColor = new("#B8E986");
 	private static readonly Color SnakeBodyColor = new("#73C979");
 	private static readonly Color FoodColor = new("#FF6B6B");
+	private static readonly Color TextColor = new("#F4F1DE");
+	private static readonly Color MutedTextColor = new("#AAB7B8");
+	private static readonly Color OverlayColor = new("#0A1119E6");
+	private static readonly Color PanelColor = new("#14252CEB");
 
 	private readonly List<Vector2I> _snake = new();
 	private readonly RandomNumberGenerator _random = new();
@@ -37,13 +41,14 @@ public partial class GameManager : Node2D
 	private bool _hasQueuedTurn;
 	private double _moveElapsed;
 	private int _score;
+	private int _bestScore;
 	private GameState _state;
 
 	public override void _Ready()
 	{
 		GD.Print("PixelSnake initialized successfully!");
 		_random.Randomize();
-		ResetGame();
+		ShowTitle();
 		QueueRedraw();
 	}
 
@@ -70,7 +75,10 @@ public partial class GameManager : Node2D
 			return;
 		}
 
-		TryQueueDirection(keyEvent.Keycode);
+		if (!HandleStateInput(keyEvent.Keycode))
+		{
+			TryQueueDirection(keyEvent.Keycode);
+		}
 	}
 
 	public override void _Draw()
@@ -121,11 +129,16 @@ public partial class GameManager : Node2D
 			2.0f
 		);
 
-		DrawSnake();
-		if (_state != GameState.Victory)
+		if (_state != GameState.Title)
 		{
-			DrawFood();
+			DrawSnake();
+			if (_state != GameState.Victory)
+			{
+				DrawFood();
+			}
 		}
+
+		DrawInterface();
 	}
 
 	private double CurrentMoveInterval => Mathf.Max(
@@ -146,6 +159,16 @@ public partial class GameManager : Node2D
 		_score = 0;
 		_state = GameState.Playing;
 		SpawnFood();
+	}
+
+	private void ShowTitle()
+	{
+		_snake.Clear();
+		_hasQueuedTurn = false;
+		_moveElapsed = 0.0;
+		_score = 0;
+		_state = GameState.Title;
+		QueueRedraw();
 	}
 
 	private void MoveSnake()
@@ -172,6 +195,7 @@ public partial class GameManager : Node2D
 		if (ateFood)
 		{
 			_score += 10;
+			_bestScore = Mathf.Max(_bestScore, _score);
 			GD.Print($"Score: {_score}");
 			SpawnFood();
 		}
@@ -181,6 +205,58 @@ public partial class GameManager : Node2D
 		}
 
 		QueueRedraw();
+	}
+
+	private bool HandleStateInput(Key keycode)
+	{
+		switch (_state)
+		{
+			case GameState.Title:
+				if (keycode is Key.Enter or Key.Space)
+				{
+					ResetGame();
+					QueueRedraw();
+					return true;
+				}
+				return false;
+
+			case GameState.Playing:
+				if (keycode is Key.Space or Key.Escape)
+				{
+					_state = GameState.Paused;
+					QueueRedraw();
+					return true;
+				}
+				return false;
+
+			case GameState.Paused:
+				if (keycode is Key.Space or Key.Escape)
+				{
+					_state = GameState.Playing;
+					QueueRedraw();
+					return true;
+				}
+				return false;
+
+			case GameState.GameOver:
+			case GameState.Victory:
+				if (keycode is Key.Enter or Key.Space)
+				{
+					ResetGame();
+					QueueRedraw();
+					return true;
+				}
+
+				if (keycode == Key.Escape)
+				{
+					ShowTitle();
+					return true;
+				}
+				return false;
+
+			default:
+				return false;
+		}
 	}
 
 	private void TryQueueDirection(Key keycode)
@@ -231,6 +307,76 @@ public partial class GameManager : Node2D
 		DrawRect(new Rect2(pixelX, pixelY, foodSize, foodSize), FoodColor);
 	}
 
+	private void DrawInterface()
+	{
+		switch (_state)
+		{
+			case GameState.Title:
+				DrawTitleScreen();
+				break;
+
+			case GameState.Playing:
+				DrawHud();
+				break;
+
+			case GameState.Paused:
+				DrawHud();
+				DrawOverlay("PAUSED", "SPACE / ESC TO RESUME");
+				break;
+
+			case GameState.GameOver:
+				DrawHud();
+				DrawOverlay("GAME OVER", "ENTER / SPACE TO RESTART", "ESC TO RETURN TO TITLE");
+				break;
+
+			case GameState.Victory:
+				DrawHud();
+				DrawOverlay("BOARD CLEARED!", "ENTER / SPACE TO PLAY AGAIN", "ESC TO RETURN TO TITLE");
+				break;
+		}
+	}
+
+	private void DrawTitleScreen()
+	{
+		DrawRect(new Rect2(106, 95, 428, 290), PanelColor);
+		DrawRect(new Rect2(106, 95, 428, 290), BorderColor, false, 2.0f);
+
+		DrawCenteredText("PIXEL SNAKE", 175, 42, SnakeHeadColor);
+		DrawCenteredText("RETRO ARCADE EDITION", 210, 16, MutedTextColor);
+		DrawCenteredText("PRESS ENTER OR SPACE TO START", 275, 18, TextColor);
+		DrawCenteredText("ARROWS / WASD  MOVE", 320, 16, MutedTextColor);
+		DrawCenteredText("SPACE / ESC  PAUSE", 348, 16, MutedTextColor);
+	}
+
+	private void DrawHud()
+	{
+		DrawString(ThemeDB.FallbackFont, new Vector2(82, 38), $"SCORE  {_score:0000}",
+			HorizontalAlignment.Left, -1, 18, TextColor);
+		DrawString(ThemeDB.FallbackFont, new Vector2(420, 38), $"BEST  {_bestScore:0000}",
+			HorizontalAlignment.Left, -1, 18, TextColor);
+	}
+
+	private void DrawOverlay(string title, string primaryInstruction, string secondaryInstruction = null)
+	{
+		DrawRect(new Rect2(0, 0, 640, 480), OverlayColor);
+		DrawRect(new Rect2(112, 165, 416, 150), PanelColor);
+		DrawRect(new Rect2(112, 165, 416, 150), BorderColor, false, 2.0f);
+
+		DrawCenteredText(title, 220, 30, TextColor);
+		DrawCenteredText(primaryInstruction, 260, 16, MutedTextColor);
+
+		if (secondaryInstruction is not null)
+		{
+			DrawCenteredText(secondaryInstruction, 286, 16, MutedTextColor);
+		}
+	}
+
+	private void DrawCenteredText(string text, float baselineY, int fontSize, Color color)
+	{
+		DrawString(ThemeDB.FallbackFont, new Vector2(0, baselineY), text,
+			HorizontalAlignment.Center, 640, fontSize, color);
+	}
+
 	private bool IsInsideBoard(Vector2I cell)
 	{
 		return cell.X >= 0 && cell.X < Columns && cell.Y >= 0 && cell.Y < Rows;
@@ -275,7 +421,9 @@ public partial class GameManager : Node2D
 
 	private enum GameState
 	{
+		Title,
 		Playing,
+		Paused,
 		GameOver,
 		Victory
 	}
