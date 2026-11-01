@@ -19,15 +19,22 @@ public partial class GameManager : Node2D
 	private const double InitialMoveInterval = 0.18;
 	private const double MinimumMoveInterval = 0.08;
 	private const double SpeedIncreasePerFood = 0.01;
+	private const double ScorePopDuration = 0.65;
 	private const int SegmentInset = 2;
 
 	private static readonly Color BackgroundColor = new("#101820");
 	private static readonly Color BoardColor = new("#182C32");
+	private static readonly Color BoardShadowColor = new("#091217");
 	private static readonly Color GridColor = new("#29434A");
 	private static readonly Color BorderColor = new("#5C8D89");
 	private static readonly Color SnakeHeadColor = new("#B8E986");
 	private static readonly Color SnakeBodyColor = new("#73C979");
 	private static readonly Color FoodColor = new("#FF6B6B");
+	private static readonly Color FoodHighlightColor = new("#FFD6A5");
+	private static readonly Color FoodStemColor = new("#8BD17C");
+	private static readonly Color EyeColor = new("#122026");
+	private static readonly Color BackdropAccentColor = new("#1A3037");
+	private static readonly Color ScorePopColor = new("#FFE66D");
 	private static readonly Color TextColor = new("#F4F1DE");
 	private static readonly Color MutedTextColor = new("#AAB7B8");
 	private static readonly Color OverlayColor = new("#0A1119E6");
@@ -40,6 +47,8 @@ public partial class GameManager : Node2D
 	private Vector2I _food;
 	private bool _hasQueuedTurn;
 	private double _moveElapsed;
+	private double _visualElapsed;
+	private double _scorePopRemaining;
 	private int _score;
 	private int _bestScore;
 	private GameState _state;
@@ -59,6 +68,8 @@ public partial class GameManager : Node2D
 			return;
 		}
 
+		_visualElapsed += delta;
+		_scorePopRemaining = Mathf.Max(0.0f, (float)(_scorePopRemaining - delta));
 		_moveElapsed += delta;
 
 		while (_state == GameState.Playing && _moveElapsed >= CurrentMoveInterval)
@@ -66,6 +77,8 @@ public partial class GameManager : Node2D
 			_moveElapsed -= CurrentMoveInterval;
 			MoveSnake();
 		}
+
+		QueueRedraw();
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -87,6 +100,12 @@ public partial class GameManager : Node2D
 		DrawRect(
 			new Rect2(0, 0, 640, 480),
 			BackgroundColor
+		);
+		DrawBackdrop();
+
+		DrawRect(
+			new Rect2(OffsetX - 4, OffsetY - 4, BoardWidth + 8, BoardHeight + 8),
+			BoardShadowColor
 		);
 
 		// Game board
@@ -157,6 +176,7 @@ public partial class GameManager : Node2D
 		_hasQueuedTurn = false;
 		_moveElapsed = 0.0;
 		_score = 0;
+		_scorePopRemaining = 0.0;
 		_state = GameState.Playing;
 		SpawnFood();
 	}
@@ -196,6 +216,7 @@ public partial class GameManager : Node2D
 		{
 			_score += 10;
 			_bestScore = Mathf.Max(_bestScore, _score);
+			_scorePopRemaining = ScorePopDuration;
 			GD.Print($"Score: {_score}");
 			SpawnFood();
 		}
@@ -295,16 +316,62 @@ public partial class GameManager : Node2D
 			float segmentSize = CellSize - SegmentInset * 2;
 
 			DrawRect(new Rect2(pixelX, pixelY, segmentSize, segmentSize), color);
+
+			if (index == 0)
+			{
+				DrawSnakeEyes(pixelX, pixelY);
+			}
 		}
 	}
 
 	private void DrawFood()
 	{
-		float pixelX = OffsetX + _food.X * CellSize + SegmentInset;
-		float pixelY = OffsetY + _food.Y * CellSize + SegmentInset;
-		float foodSize = CellSize - SegmentInset * 2;
+		float pixelX = OffsetX + _food.X * CellSize;
+		float pixelY = OffsetY + _food.Y * CellSize;
+		float bobOffset = (int)(_visualElapsed * 5.0) % 2;
 
-		DrawRect(new Rect2(pixelX, pixelY, foodSize, foodSize), FoodColor);
+		DrawRect(new Rect2(pixelX + 11, pixelY + 3 + bobOffset, 3, 5), FoodStemColor);
+		DrawRect(new Rect2(pixelX + 7, pixelY + 7 + bobOffset, 10, 14), FoodColor);
+		DrawRect(new Rect2(pixelX + 5, pixelY + 10 + bobOffset, 14, 8), FoodColor);
+		DrawRect(new Rect2(pixelX + 8, pixelY + 9 + bobOffset, 3, 3), FoodHighlightColor);
+	}
+
+	private void DrawSnakeEyes(float pixelX, float pixelY)
+	{
+		Vector2 firstEye;
+		Vector2 secondEye;
+
+		if (_direction == Vector2I.Right)
+		{
+			firstEye = new Vector2(13, 4);
+			secondEye = new Vector2(13, 13);
+		}
+		else if (_direction == Vector2I.Left)
+		{
+			firstEye = new Vector2(4, 4);
+			secondEye = new Vector2(4, 13);
+		}
+		else if (_direction == Vector2I.Up)
+		{
+			firstEye = new Vector2(4, 4);
+			secondEye = new Vector2(13, 4);
+		}
+		else
+		{
+			firstEye = new Vector2(4, 13);
+			secondEye = new Vector2(13, 13);
+		}
+
+		DrawRect(new Rect2(new Vector2(pixelX, pixelY) + firstEye, new Vector2(3, 3)), EyeColor);
+		DrawRect(new Rect2(new Vector2(pixelX, pixelY) + secondEye, new Vector2(3, 3)), EyeColor);
+	}
+
+	private void DrawBackdrop()
+	{
+		DrawRect(new Rect2(34, 48, 24, 4), BackdropAccentColor);
+		DrawRect(new Rect2(34, 56, 12, 4), BackdropAccentColor);
+		DrawRect(new Rect2(582, 420, 24, 4), BackdropAccentColor);
+		DrawRect(new Rect2(594, 428, 12, 4), BackdropAccentColor);
 	}
 
 	private void DrawInterface()
@@ -354,6 +421,12 @@ public partial class GameManager : Node2D
 			HorizontalAlignment.Left, -1, 18, TextColor);
 		DrawString(ThemeDB.FallbackFont, new Vector2(420, 38), $"BEST  {_bestScore:0000}",
 			HorizontalAlignment.Left, -1, 18, TextColor);
+
+		if (_scorePopRemaining > 0.0)
+		{
+			float progress = 1.0f - (float)(_scorePopRemaining / ScorePopDuration);
+			DrawCenteredText("+10", OffsetY + 32 - progress * 16, 20, ScorePopColor);
+		}
 	}
 
 	private void DrawOverlay(string title, string primaryInstruction, string secondaryInstruction = null)
